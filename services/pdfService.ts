@@ -1,44 +1,52 @@
 import { Platform } from 'react-native';
 import { jsPDF } from 'jspdf';
 
-interface ConfiguracaoLoja {
+// Aceita tanto ConfiguracaoEmpresa (supabaseService) quanto ConfiguracaoLoja
+interface ConfigInput {
+  nome?: string;
   nome_loja?: string;
   endereco?: string;
   telefone?: string;
+  avisoPersonalizado?: string;
 }
 
-const DEFAULT_CONFIG: Required<ConfiguracaoLoja> = {
-  nome_loja: 'CASA SÃO FRANCISCO',
-  endereco: 'Parintins - AM',
-  telefone: '',
-};
-
-function formatDate(dateStr: string): string {
-  if (!dateStr) return '';
-  const [year, month, day] = dateStr.split('T')[0].split('-');
-  return `${day}/${month}/${year}`;
+function resolveConfig(config?: ConfigInput) {
+  return {
+    nome: config?.nome_loja ?? config?.nome ?? 'CASA SÃO FRANCISCO',
+    endereco: config?.endereco ?? 'Parintins - AM',
+    telefone: config?.telefone ?? '',
+  };
 }
 
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value ?? 0);
+function fmtDate(d: string): string {
+  if (!d) return '';
+  const s = d.split('T')[0].split('-');
+  return `${s[2]}/${s[1]}/${s[0]}`;
 }
 
-function padCode(crediarioId: any, numeroParcela: number): string {
-  return String(crediarioId ?? 0).padStart(5, '0') + String(numeroParcela).padStart(2, '0');
+function fmtMoney(v: number): string {
+  return `R$ ${Number(v ?? 0).toFixed(2).replace('.', ',')}`;
 }
 
-function downloadPDF(doc: jsPDF, filename: string): void {
+function triggerDownload(doc: jsPDF, filename: string): void {
   if (Platform.OS === 'web') {
-    doc.save(filename);
+    const blob = doc.output('blob');
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
   } else {
-    const dataUri = doc.output('datauristring');
-    console.log('[PDFService] PDF gerado (mobile):', filename, dataUri.substring(0, 80) + '...');
+    const uri = doc.output('datauristring');
+    console.log('[PDFService] PDF mobile gerado:', filename, uri.substring(0, 60) + '...');
   }
 }
 
-// ─── Carnê ────────────────────────────────────────────────────────────────────
-
-function desenharVia(
+function drawVia(
   doc: jsPDF,
   x: number,
   y: number,
@@ -47,107 +55,83 @@ function desenharVia(
   crediario: any,
   parcela: any,
   clienteNome: string,
-  cfg: Required<ConfiguracaoLoja>
+  cfg: ReturnType<typeof resolveConfig>
 ): void {
-  const pad = 4;
-  const right = x + w;
-  const fieldH = 7;
+  const r = x + w;
+  const pad = 3;
 
-  // Borda externa
   doc.setDrawColor(0);
   doc.setLineWidth(0.4);
   doc.rect(x, y, w, h);
 
-  // ── Cabeçalho ─────────────────────────────────────────────────────────────
-  const headerH = 12;
-  doc.setFillColor(248, 248, 248);
-  doc.rect(x, y, w, headerH, 'F');
+  // cabeçalho
+  const hdrH = 11;
+  doc.setFillColor(245, 245, 245);
+  doc.rect(x, y, w, hdrH, 'F');
   doc.setLineWidth(0.3);
-  doc.line(x, y + headerH, right, y + headerH);
+  doc.line(x, y + hdrH, r, y + hdrH);
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(0);
-  doc.text(cfg.nome_loja, x + w / 2, y + 5, { align: 'center' });
+  doc.text(cfg.nome, x + w / 2, y + 4.5, { align: 'center' });
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
+  doc.setFontSize(6);
   doc.setTextColor(80);
-  const contato = [cfg.endereco, cfg.telefone].filter(Boolean).join(' | Tel: ');
-  doc.text(contato, x + w / 2, y + 10, { align: 'center' });
+  const sub = [cfg.endereco, cfg.telefone ? `Tel: ${cfg.telefone}` : ''].filter(Boolean).join(' | ');
+  doc.text(sub, x + w / 2, y + 9, { align: 'center' });
   doc.setTextColor(0);
 
-  // ── Campos ────────────────────────────────────────────────────────────────
-  let cy = y + headerH + 3;
+  let cy = y + hdrH + 3;
+  const lineH = 6.5;
+  const half = (w - pad) / 2;
 
-  const drawField = (label: string, value: string, fx: number, fw: number, fy: number): void => {
+  const field = (label: string, value: string, fx: number, fw: number, fy: number) => {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
-    doc.text(label, fx + pad, fy + 4.5);
-    const labelW = doc.getTextWidth(label) + pad + 1;
+    doc.setFontSize(6);
+    doc.text(label, fx + pad, fy + 4);
+    const lw = doc.getTextWidth(label) + pad + 1;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
-    doc.text(value, fx + labelW, fy + 4.5);
-    doc.setLineWidth(0.2);
-    doc.line(fx, fy + fieldH, fx + fw, fy + fieldH);
+    doc.text(value, fx + lw, fy + 4);
+    doc.setLineWidth(0.15);
+    doc.line(fx, fy + lineH, fx + fw, fy + lineH);
   };
 
-  // Cliente (linha inteira)
-  drawField('Cliente:', clienteNome.toUpperCase(), x, w, cy);
-  cy += fieldH + 2;
+  field('Cliente:', clienteNome.toUpperCase(), x, w, cy);
+  cy += lineH + 1.5;
 
-  // Emissão | Parcela
-  const halfW = w / 2 - 1;
-  drawField('Emissão:', formatDate(crediario.data_emissao), x, halfW, cy);
-  drawField(
-    'Parcela:',
-    `${parcela.numero_parcela}/${crediario.numero_parcelas}`,
-    x + halfW + 2,
-    halfW,
-    cy
-  );
-  cy += fieldH + 2;
+  field('Emissão:', fmtDate(crediario.data_emissao), x, half, cy);
+  field('Parcela:', `${parcela.numero_parcela}/${crediario.numero_parcelas}`, x + half + pad, half, cy);
+  cy += lineH + 1.5;
 
-  // Vencimento | Juros/Dia
-  drawField('Vencimento:', formatDate(parcela.data_vencimento), x, halfW, cy);
-  drawField(
-    'Juros/Dia:',
-    `R$ ${Number(crediario.juros_diario ?? 0).toFixed(2)}`,
-    x + halfW + 2,
-    halfW,
-    cy
-  );
-  cy += fieldH + 4;
+  field('Vencimento:', fmtDate(parcela.data_vencimento), x, half, cy);
+  field('Juros/Dia:', `R$ ${Number(crediario.juros_diario ?? 0).toFixed(2)}`, x + half + pad, half, cy);
 
-  // ── Rodapé: código | valor ────────────────────────────────────────────────
-  const footerH = 10;
-  const footerY = y + h - footerH;
+  // rodapé: código | valor
+  const footH = 11;
+  const fy = y + h - footH;
   doc.setLineWidth(0.3);
-  doc.line(x, footerY, right, footerY);
+  doc.line(x, fy, r, fy);
+  const mid = x + w / 2;
+  doc.line(mid, fy, mid, y + h);
 
-  // Divisor vertical no meio do rodapé
-  const midX = x + w / 2;
-  doc.line(midX, footerY, midX, y + h);
+  const code = String(crediario.id ?? 0).padStart(5, '0') + String(parcela.numero_parcela).padStart(2, '0');
 
-  // Código
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6);
-  doc.text('Código do Documento', x + pad, footerY + 3.5);
+  doc.setFontSize(5.5);
+  doc.text('Código do Documento', x + pad, fy + 3.5);
   doc.setFont('courier', 'bold');
-  doc.setFontSize(7.5);
-  doc.text(padCode(crediario.id, parcela.numero_parcela), x + pad, footerY + 8);
+  doc.setFontSize(7);
+  doc.text(code, x + pad, fy + 8.5);
 
-  // Valor
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6);
-  doc.text('Valor do documento', midX + pad, footerY + 3.5);
+  doc.setFontSize(5.5);
+  doc.text('Valor do documento', mid + pad, fy + 3.5);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
-  doc.text(
-    `R$ ${Number(parcela.valor_original ?? 0).toFixed(2)}`,
-    midX + pad,
-    footerY + 8.5
-  );
+  doc.text(fmtMoney(parcela.valor_original ?? 0), mid + pad, fy + 9);
 }
 
 export class PDFService {
@@ -155,46 +139,34 @@ export class PDFService {
     crediario: any,
     parcelas: any[],
     clienteNome: string,
-    config?: ConfiguracaoLoja
+    config?: ConfigInput
   ): Promise<void> {
-    const cfg: Required<ConfiguracaoLoja> = { ...DEFAULT_CONFIG, ...config };
-
-    // A4 retrato: 210 × 297 mm
+    const cfg = resolveConfig(config);
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
     const pageW = 210;
     const pageH = 297;
     const marginX = 8;
     const marginY = 8;
-    const gap = 4;       // espaço entre vias na horizontal
-    const rowGap = 5;    // espaço entre linhas de parcelas
+    const gapX = 4;
+    const gapY = 4;
+    const viaW = (pageW - marginX * 2 - gapX) / 2;
+    const viaH = 52;
 
-    const viaW = (pageW - marginX * 2 - gap) / 2;
-    const viaH = 52;     // altura de cada via em mm
+    let curY = marginY;
 
-    let currentY = marginY;
-    let isFirstPage = true;
-
-    for (const parcela of parcelas) {
-      // Verifica se cabe na página atual
-      if (!isFirstPage && currentY + viaH > pageH - marginY) {
+    for (let i = 0; i < parcelas.length; i++) {
+      if (i > 0 && curY + viaH > pageH - marginY) {
         doc.addPage();
-        currentY = marginY;
+        curY = marginY;
       }
-      isFirstPage = false;
-
-      const xLeft = marginX;
-      const xRight = marginX + viaW + gap;
-
-      desenharVia(doc, xLeft, currentY, viaW, viaH, crediario, parcela, clienteNome, cfg);
-      desenharVia(doc, xRight, currentY, viaW, viaH, crediario, parcela, clienteNome, cfg);
-
-      currentY += viaH + rowGap;
+      drawVia(doc, marginX, curY, viaW, viaH, crediario, parcelas[i], clienteNome, cfg);
+      drawVia(doc, marginX + viaW + gapX, curY, viaW, viaH, crediario, parcelas[i], clienteNome, cfg);
+      curY += viaH + gapY;
     }
 
-    const safeNome = clienteNome.replace(/\s+/g, '_').toLowerCase();
-    const filename = `carne_${safeNome}_${parcelas.length}xParcelas.pdf`;
-    downloadPDF(doc, filename);
+    const safe = clienteNome.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
+    triggerDownload(doc, `carne_${safe}_${parcelas.length}xParcelas.pdf`);
   }
 
   static async gerarRelatorioGeral(
@@ -203,182 +175,146 @@ export class PDFService {
     todosCrediarios: any[],
     todosClientes: any[],
     todasParcelas: any[],
-    config?: ConfiguracaoLoja
+    config?: ConfigInput
   ): Promise<void> {
-    const cfg: Required<ConfiguracaoLoja> = { ...DEFAULT_CONFIG, ...config };
-
+    const cfg = resolveConfig(config);
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageW = 210;
-    const marginX = 15;
-    const usableW = pageW - marginX * 2;
-    let y = 20;
+    const mX = 14;
+    const usable = pageW - mX * 2;
+    let y = 18;
 
-    const checkPage = (needed = 10): void => {
-      if (y + needed > 280) {
-        doc.addPage();
-        y = 20;
-      }
+    const chk = (n = 10) => {
+      if (y + n > 282) { doc.addPage(); y = 18; }
     };
 
-    const sectionTitle = (title: string): void => {
-      checkPage(12);
-      doc.setFillColor(240, 240, 240);
-      doc.rect(marginX, y, usableW, 7, 'F');
+    const secTitle = (t: string) => {
+      chk(10);
+      doc.setFillColor(235, 235, 235);
+      doc.rect(mX, y, usable, 7, 'F');
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
+      doc.setFontSize(8.5);
       doc.setTextColor(0);
-      doc.text(title, marginX + 2, y + 5);
+      doc.text(t, mX + 2, y + 5);
       y += 9;
     };
 
-    // ── Cabeçalho ─────────────────────────────────────────────────────────────
+    // Cabeçalho
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
-    doc.text(cfg.nome_loja, pageW / 2, y, { align: 'center' });
-    y += 7;
+    doc.setFontSize(13);
+    doc.text(cfg.nome, pageW / 2, y, { align: 'center' });
+    y += 6;
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    const contato = [cfg.endereco, cfg.telefone].filter(Boolean).join(' | Tel: ');
-    doc.text(contato, pageW / 2, y, { align: 'center' });
+    doc.setFontSize(7.5);
+    const sub2 = [cfg.endereco, cfg.telefone ? `Tel: ${cfg.telefone}` : ''].filter(Boolean).join(' | ');
+    if (sub2) doc.text(sub2, pageW / 2, y, { align: 'center' });
     y += 5;
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
+    doc.setFontSize(10);
     doc.text('RELATÓRIO GERAL DO SISTEMA', pageW / 2, y, { align: 'center' });
     y += 5;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(100);
-    doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, pageW / 2, y, {
-      align: 'center',
-    });
+    doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, pageW / 2, y, { align: 'center' });
     doc.setTextColor(0);
-    y += 7;
-    doc.setLineWidth(0.5);
-    doc.line(marginX, y, marginX + usableW, y);
+    y += 5;
+    doc.setLineWidth(0.4);
+    doc.line(mX, y, mX + usable, y);
     y += 5;
 
-    // ── Estatísticas gerais ────────────────────────────────────────────────────
-    sectionTitle('Estatísticas Gerais');
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    const statLines = [
-      [`Total de Clientes:`, String(stats?.totalClientes ?? todosClientes.length)],
-      [`Total de Crediários:`, String(stats?.totalCrediarios ?? todosCrediarios.length)],
-      [`Parcelas em Aberto:`, String(stats?.parcelasEmAberto ?? todasParcelas.filter((p) => p.status === 'pendente').length)],
-      [`Valor Total (crediários):`, formatCurrency(stats?.valorTotalCrediarios ?? 0)],
-      [`Valor Total Pago:`, formatCurrency(stats?.valorTotalPago ?? 0)],
-      [`Valor Total em Aberto:`, formatCurrency(stats?.valorTotalEmAberto ?? 0)],
+    // Estatísticas
+    secTitle('Estatísticas Gerais');
+    const statRows: [string, string][] = [
+      ['Total de Clientes:', String(stats?.totalClientes ?? todosClientes.length)],
+      ['Total de Crediários:', String(stats?.totalCrediarios ?? todosCrediarios.length)],
+      ['Parcelas em Aberto:', String(stats?.parcelasEmAberto ?? todasParcelas.filter(p => p.status === 'pendente').length)],
+      ['Valor Total (crediários):', fmtMoney(stats?.valorTotalCrediarios ?? 0)],
+      ['Valor Total Pago:', fmtMoney(stats?.valorTotalPago ?? 0)],
+      ['Valor em Aberto:', fmtMoney(stats?.valorTotalEmAberto ?? 0)],
     ];
-    for (const [label, value] of statLines) {
-      checkPage(6);
-      doc.setFont('helvetica', 'bold');
-      doc.text(label, marginX + 2, y);
+    for (const [label, val] of statRows) {
+      chk(6);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
+      doc.text(label, mX + 2, y);
       doc.setFont('helvetica', 'normal');
-      doc.text(value, marginX + 70, y);
+      doc.text(val, mX + 68, y);
       y += 5.5;
     }
     y += 2;
 
-    // ── Parcelas atrasadas ─────────────────────────────────────────────────────
+    // Parcelas atrasadas
     if (parcelasAtrasadas.length > 0) {
-      sectionTitle(`Parcelas Atrasadas (${parcelasAtrasadas.length})`);
+      secTitle(`Parcelas Atrasadas (${parcelasAtrasadas.length})`);
+      const cols = [44, 18, 24, 26, 20, 28];
+      const hdrs = ['Cliente', 'Parcela', 'Vencimento', 'Valor Orig.', 'Dias Atr.', 'Com Juros'];
 
-      const colW = [45, 22, 25, 25, 20, 28];
-      const headers = ['Cliente', 'Parcela', 'Vencimento', 'Valor Orig.', 'Dias Atr.', 'Com Juros'];
-
-      const drawTableRow = (cells: string[], bold = false, fill = false): void => {
-        checkPage(6);
-        if (fill) {
-          doc.setFillColor(240, 240, 240);
-          doc.rect(marginX, y - 4, usableW, 6, 'F');
-        }
-        doc.setFont('helvetica', bold ? 'bold' : 'normal');
-        doc.setFontSize(7);
-        let cx = marginX + 1;
-        for (let i = 0; i < cells.length; i++) {
-          doc.text(cells[i], cx, y);
-          cx += colW[i];
-        }
+      const drawRow = (cells: string[], bold = false, fill = false) => {
+        chk(6);
+        if (fill) { doc.setFillColor(235, 235, 235); doc.rect(mX, y - 4, usable, 6, 'F'); }
+        doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(6.5);
+        let cx = mX + 1;
+        cells.forEach((c, i) => { doc.text(c, cx, y); cx += cols[i]; });
         y += 5.5;
       };
 
-      drawTableRow(headers, true, true);
-
+      drawRow(hdrs, true, true);
       for (const p of parcelasAtrasadas) {
-        const hoje = new Date();
-        const venc = new Date(p.data_vencimento);
-        const dias = Math.max(0, Math.ceil((hoje.getTime() - venc.getTime()) / 86400000));
+        const dias = Math.max(0, Math.ceil((Date.now() - new Date(p.data_vencimento).getTime()) / 86400000));
         const comJuros = (p.valor_original ?? 0) + dias * (p.juros_diario ?? 0);
-        drawTableRow([
-          String(p.cliente_nome ?? '-'),
+        drawRow([
+          p.cliente_nome ?? '-',
           String(p.numero_parcela ?? '-'),
-          formatDate(p.data_vencimento),
-          formatCurrency(p.valor_original ?? 0),
-          `${dias} dias`,
-          formatCurrency(comJuros),
+          fmtDate(p.data_vencimento),
+          fmtMoney(p.valor_original ?? 0),
+          `${dias}d`,
+          fmtMoney(comJuros),
         ]);
       }
       y += 2;
     }
 
-    // ── Clientes ───────────────────────────────────────────────────────────────
-    sectionTitle(`Clientes (${todosClientes.length})`);
+    // Tabela de clientes
+    secTitle(`Clientes (${todosClientes.length})`);
+    const cCols = [52, 32, 18, 18, 26, 26];
+    const cHdrs = ['Nome', 'Telefone', 'Crediários', 'Parcelas', 'Pago', 'Em Aberto'];
 
-    const cliColW = [55, 35, 20, 20, 25, 25];
-    const cliHeaders = ['Nome', 'Telefone', 'Crediários', 'Parcelas', 'Pago', 'Em Aberto'];
-
-    const drawCellRow = (cells: string[], bold = false, fill = false): void => {
-      checkPage(6);
-      if (fill) {
-        doc.setFillColor(240, 240, 240);
-        doc.rect(marginX, y - 4, usableW, 6, 'F');
-      }
-      doc.setFont('helvetica', bold ? 'bold' : 'normal');
-      doc.setFontSize(7);
-      let cx = marginX + 1;
-      for (let i = 0; i < cells.length; i++) {
-        doc.text(cells[i], cx, y);
-        cx += cliColW[i];
-      }
+    const drawCRow = (cells: string[], bold = false, fill = false) => {
+      chk(6);
+      if (fill) { doc.setFillColor(235, 235, 235); doc.rect(mX, y - 4, usable, 6, 'F'); }
+      doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(6.5);
+      let cx = mX + 1;
+      cells.forEach((c, i) => { doc.text(c, cx, y); cx += cCols[i]; });
       y += 5.5;
     };
 
-    drawCellRow(cliHeaders, true, true);
-
-    for (const cliente of todosClientes) {
-      const crediariosCliente = todosCrediarios.filter((c) => c.cliente_id === cliente.id);
-      const parcelasCliente = todasParcelas.filter((p) =>
-        crediariosCliente.some((c) => c.id === p.crediario_id)
-      );
-      const pagas = parcelasCliente.filter((p) => p.status === 'paga');
-      const abertas = parcelasCliente.filter((p) => p.status === 'pendente');
-      const valorPago = pagas.reduce((s, p) => s + (p.valor_pago ?? p.valor_original ?? 0), 0);
-      const valorAberto = abertas.reduce((s, p) => s + (p.valor_original ?? 0), 0);
-
-      drawCellRow([
-        cliente.nome ?? '-',
-        cliente.telefone ?? '-',
-        String(crediariosCliente.length),
-        String(parcelasCliente.length),
-        formatCurrency(valorPago),
-        formatCurrency(valorAberto),
+    drawCRow(cHdrs, true, true);
+    for (const cli of todosClientes) {
+      const creds = todosCrediarios.filter(c => c.cliente_id === cli.id);
+      const parts = todasParcelas.filter(p => creds.some(c => c.id === p.crediario_id));
+      const pagas = parts.filter(p => p.status === 'paga');
+      const abertas = parts.filter(p => p.status === 'pendente');
+      const pago = pagas.reduce((s, p) => s + (p.valor_pago ?? p.valor_original ?? 0), 0);
+      const aberto = abertas.reduce((s, p) => s + (p.valor_original ?? 0), 0);
+      drawCRow([
+        cli.nome ?? '-',
+        cli.telefone ?? '-',
+        String(creds.length),
+        String(parts.length),
+        fmtMoney(pago),
+        fmtMoney(aberto),
       ]);
     }
 
-    // ── Rodapé ─────────────────────────────────────────────────────────────────
-    checkPage(12);
+    // Rodapé
+    chk(10);
+    y += 4;
+    doc.setLineWidth(0.2);
+    doc.line(mX, y, mX + usable, y);
     y += 5;
-    doc.setLineWidth(0.3);
-    doc.line(marginX, y, marginX + usableW, y);
-    y += 5;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(100);
-    doc.text('Relatório gerado automaticamente pelo Sistema de Crediário', pageW / 2, y, {
-      align: 'center',
-    });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(120);
+    doc.text('Relatório gerado automaticamente pelo Sistema de Crediário', pageW / 2, y, { align: 'center' });
 
-    const filename = `relatorio_geral_${new Date().toISOString().split('T')[0]}.pdf`;
-    downloadPDF(doc, filename);
+    triggerDownload(doc, `relatorio_geral_${new Date().toISOString().split('T')[0]}.pdf`);
   }
 }
