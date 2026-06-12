@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, Modal, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
@@ -11,11 +11,16 @@ import { formatDate, adicionarMeses } from '@/utils/dateUtils';
 import { validateCrediario, formatCurrency } from '@/utils/validation';
 import { parseCurrencyInput } from '@/utils/validation';
 import { Calculator, FileText, User } from 'lucide-react-native';
+import { PDFService } from '@/services/pdfService';
 
 export default function EmissaoScreen() {
   const { supabaseService, isReady, isUsingSupabase } = useSupabase();
   const [loading, setLoading] = useState(false);
-  
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [ultimoCrediario, setUltimoCrediario] = useState<any>(null);
+  const [ultimasParcelas, setUltimasParcelas] = useState<any[]>([]);
+  const [showSucesso, setShowSucesso] = useState(false);
+
   const [formData, setFormData] = useState({
     nomeCliente: '',
     enderecoCliente: '',
@@ -23,9 +28,42 @@ export default function EmissaoScreen() {
     jurosDiario: 'R$ 0,00',
     numeroParcelas: '',
   });
-  
+
   const [dataVencimento, setDataVencimento] = useState(new Date());
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const limparFormulario = () => {
+    setFormData({
+      nomeCliente: '',
+      enderecoCliente: '',
+      valorTotal: 'R$ 0,00',
+      jurosDiario: 'R$ 0,00',
+      numeroParcelas: '',
+    });
+    setDataVencimento(new Date());
+    setUltimoCrediario(null);
+    setUltimasParcelas([]);
+    setShowSucesso(false);
+  };
+
+  const handleGerarPDF = async () => {
+    if (!ultimoCrediario || ultimasParcelas.length === 0) return;
+    setPdfLoading(true);
+    try {
+      const config = await supabaseService.buscarConfiguracoes();
+      await PDFService.gerarPDFCrediario(
+        ultimoCrediario,
+        ultimasParcelas,
+        ultimoCrediario.cliente_nome,
+        config || undefined
+      );
+    } catch (err: any) {
+      Alert.alert('Erro no PDF', `Não foi possível gerar o PDF.\n\n${err?.message ?? ''}`);
+    } finally {
+      setPdfLoading(false);
+      limparFormulario();
+    }
+  };
 
   const validateForm = (): boolean => {
     const validation = validateCrediario(formData);
@@ -35,37 +73,30 @@ export default function EmissaoScreen() {
 
   const handleSubmit = async () => {
     if (!validateForm()) return;
-    
     setLoading(true);
-    
     try {
-      // Buscar ou criar cliente
       let clienteId: number;
       const clientesExistentes = await supabaseService.buscarClientesPorNome(formData.nomeCliente);
-      
+
       if (clientesExistentes.length > 0) {
         clienteId = clientesExistentes[0].id!;
-        
-        // Atualizar endereço do cliente se fornecido
         if (formData.enderecoCliente.trim()) {
           await supabaseService.atualizarCliente(clienteId, {
             endereco: formData.enderecoCliente.trim()
           });
         }
       } else {
-        // Criar cliente automaticamente se não existir
         clienteId = await supabaseService.criarCliente({
           nome: formData.nomeCliente,
           telefone: '',
           endereco: formData.enderecoCliente.trim()
         });
       }
-      
-      // Criar crediário
+
       const valorTotal = parseCurrencyInput(formData.valorTotal);
       const numeroParcelas = parseInt(formData.numeroParcelas);
       const valorParcela = valorTotal / numeroParcelas;
-      
+
       const crediario: Crediario = {
         cliente_id: clienteId,
         cliente_nome: formData.nomeCliente,
@@ -76,14 +107,12 @@ export default function EmissaoScreen() {
         numero_parcelas: numeroParcelas,
         valor_parcela: valorParcela,
       };
-      
+
       const crediarioId = await supabaseService.criarCrediario(crediario);
-      
-      // Criar parcelas
+
       const parcelas: Parcela[] = [];
       for (let i = 0; i < numeroParcelas; i++) {
         const dataVencimentoParcela = adicionarMeses(dataVencimento, i);
-        
         parcelas.push({
           crediario_id: crediarioId,
           numero_parcela: i + 1,
@@ -93,80 +122,12 @@ export default function EmissaoScreen() {
           dias_atraso: 0,
         });
       }
-      
+
       await supabaseService.criarParcelas(parcelas);
-      
-      // Gerar PDF
-      Alert.alert(
-        'Sucesso',
-        'Crediário criado com sucesso!',
-        [
-          {
-            text: 'OK',
-            style: 'default'
-          },
-          {
-            text: '📄 Gerar PDF',
-            onPress: async () => {
-              try {
-                console.log('🎯 [MAIN] Iniciando processo de geração de PDF...');
-                console.log('🎯 [MAIN] Dados do crediário:', crediario);
-                console.log('🎯 [MAIN] Parcelas:', parcelas);
-                
-               console.log('🎯 [MAIN] Tentando importar módulo PDF...');
-                const pdfModule = await import('@/services/pdfService');
-                console.log('🎯 [MAIN] Módulo PDF importado:', pdfModule);
-                console.log('🎯 [MAIN] PDFService disponível:', !!pdfModule.PDFService);
-               console.log('🎯 [MAIN] Métodos disponíveis:', Object.keys(pdfModule));
-                
-               console.log('🎯 [MAIN] Buscando configurações...');
-                const config = await supabaseService.buscarConfiguracoes();
-                console.log('🎯 [MAIN] Configurações carregadas:', config);
-                
-                console.log('🎯 [MAIN] Chamando PDFService.gerarPDFCrediario...');
-               console.log('🎯 [MAIN] Parâmetros:', {
-                 crediario: !!crediario,
-                 parcelas: parcelas.length,
-                 clienteNome: formData.nomeCliente,
-                 config: !!config
-               });
-               
-                console.log('🎯 [MAIN] Iniciando geração de PDF...');
-                await pdfModule.PDFService.gerarPDFCrediario(
-                  crediario, 
-                  parcelas, 
-                  formData.nomeCliente, 
-                  config || undefined
-                );
-                
-                console.log('🎯 [MAIN] PDF gerado com sucesso!');
-                // Não mostrar alerta aqui, o PDFService já mostra feedback
-              } catch (pdfError) {
-                console.error('🎯 [MAIN] Erro ao gerar PDF:', pdfError);
-                console.error('🎯 [MAIN] Stack do erro:', pdfError.stack);
-               console.error('🎯 [MAIN] Tipo do erro:', typeof pdfError);
-               console.error('🎯 [MAIN] Nome do erro:', pdfError.name);
-               console.error('🎯 [MAIN] Mensagem do erro:', pdfError.message);
-                Alert.alert(
-                  'Erro no PDF', 
-                  `Não foi possível gerar o PDF.\n\nDetalhes: ${pdfError.message}\n\n✅ O crediário foi salvo com sucesso!`
-                );
-              }
-            }
-          }
-        ]
-      );
-      
-      // Limpar formulário
-      setFormData({
-        nomeCliente: '',
-        enderecoCliente: '',
-        valorTotal: 'R$ 0,00',
-        jurosDiario: 'R$ 0,00',
-        numeroParcelas: '',
-      });
-      setDataVencimento(new Date());
-      
+
+      setUltimoCrediario({ ...crediario, id: crediarioId });
+      setUltimasParcelas(parcelas);
+      setShowSucesso(true);
     } catch (error) {
       console.error('Erro ao criar crediário:', error);
       Alert.alert('Erro', 'Erro ao criar crediário. Tente novamente.');
@@ -182,10 +143,45 @@ export default function EmissaoScreen() {
   }
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
+    <KeyboardAvoidingView
+      style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      {/* Modal de sucesso */}
+      <Modal
+        visible={showSucesso}
+        transparent
+        animationType="fade"
+        onRequestClose={limparFormulario}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalIcon}>✅</Text>
+            <Text style={styles.modalTitle}>Crediário criado com sucesso!</Text>
+            <Text style={styles.modalSub}>
+              {ultimasParcelas.length} parcela{ultimasParcelas.length !== 1 ? 's' : ''} gerada{ultimasParcelas.length !== 1 ? 's' : ''} para {ultimoCrediario?.cliente_nome ?? ''}
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.modalBtn, styles.modalBtnPrimary]}
+              onPress={handleGerarPDF}
+              disabled={pdfLoading}
+            >
+              {pdfLoading
+                ? <ActivityIndicator color="#ffffff" />
+                : <Text style={styles.modalBtnTextPrimary}>📄 Baixar Carnê PDF</Text>
+              }
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.modalBtn, styles.modalBtnSecondary]}
+              onPress={limparFormulario}
+            >
+              <Text style={styles.modalBtnTextSecondary}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={styles.headerIcon}>
@@ -436,5 +432,67 @@ const styles = StyleSheet.create({
   submitButton: {
     marginTop: 24,
     paddingVertical: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalBox: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 28,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  modalIcon: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  modalSub: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  modalBtn: {
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  modalBtnPrimary: {
+    backgroundColor: '#2563eb',
+  },
+  modalBtnSecondary: {
+    backgroundColor: '#f3f4f6',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+  },
+  modalBtnTextPrimary: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  modalBtnTextSecondary: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
   },
 });
