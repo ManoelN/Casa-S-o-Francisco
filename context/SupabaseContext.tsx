@@ -30,10 +30,15 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     const initializeService = async () => {
       try {
-        // Verificar se as variáveis de ambiente estão configuradas
-        const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-        const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-        
+        const supabaseUrl =
+          process.env.EXPO_PUBLIC_SUPABASE_URL ||
+          (typeof localStorage !== 'undefined' && localStorage.getItem('SUPABASE_URL')) ||
+          '';
+        const supabaseAnonKey =
+          process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+          (typeof localStorage !== 'undefined' && localStorage.getItem('SUPABASE_ANON_KEY')) ||
+          '';
+
         if (supabaseUrl && supabaseAnonKey && supabaseUrl !== 'your_supabase_project_url' && supabaseAnonKey !== 'your_supabase_anon_key') {
           // Tentar usar Supabase
           try {

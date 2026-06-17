@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useSupabase } from '@/context/SupabaseContext';
-import { Settings, Store, Phone, MapPin, FileText } from 'lucide-react-native';
+import { Settings, Store, Phone, MapPin, FileText, Cloud } from 'lucide-react-native';
 
 interface ConfiguracaoEmpresa {
   nome: string;
@@ -15,7 +15,7 @@ interface ConfiguracaoEmpresa {
 }
 
 export default function ConfiguracoesScreen() {
-  const { supabaseService, isReady } = useSupabase();
+  const { supabaseService, isReady, isUsingSupabase } = useSupabase();
   const [loading, setLoading] = useState(false);
   const [config, setConfig] = useState<ConfiguracaoEmpresa>({
     nome: 'CASA SÃO FRANCISCO',
@@ -23,6 +23,28 @@ export default function ConfiguracoesScreen() {
     telefone: '(92) 99999-9999',
     avisoPersonalizado: 'Sistema desenvolvido para controle de vendas a prazo'
   });
+
+  const [supabaseUrl, setSupabaseUrl] = useState('');
+  const [supabaseKey, setSupabaseKey] = useState('');
+
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+      setSupabaseUrl(localStorage.getItem('SUPABASE_URL') ?? '');
+      setSupabaseKey(localStorage.getItem('SUPABASE_ANON_KEY') ?? '');
+    }
+  }, []);
+
+  const salvarConexaoSupabase = () => {
+    if (!supabaseUrl.trim() || !supabaseKey.trim()) {
+      Alert.alert('Erro', 'Preencha a URL e a Chave Anon Key antes de salvar.');
+      return;
+    }
+    if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+      localStorage.setItem('SUPABASE_URL', supabaseUrl.trim());
+      localStorage.setItem('SUPABASE_ANON_KEY', supabaseKey.trim());
+      window.location.reload();
+    }
+  };
 
   useEffect(() => {
     if (isReady) {
@@ -127,6 +149,50 @@ export default function ConfiguracoesScreen() {
           />
         </Card>
         
+        <Card variant="elevated">
+          <View style={styles.sectionHeader}>
+            <Cloud size={20} color="#2563eb" />
+            <Text style={styles.sectionTitle}>Conexão com Supabase</Text>
+          </View>
+
+          <View style={[styles.statusBadge, isUsingSupabase ? styles.statusConnected : styles.statusLocal]}>
+            <Text style={[styles.statusText, isUsingSupabase ? styles.statusTextConnected : styles.statusTextLocal]}>
+              {isUsingSupabase ? '🟢 Conectado ao Supabase' : '🟡 Usando armazenamento local'}
+            </Text>
+          </View>
+
+          <Input
+            label="URL do Supabase"
+            value={supabaseUrl}
+            onChangeText={setSupabaseUrl}
+            placeholder="https://xxxx.supabase.co"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <Input
+            label="Chave Anon Key"
+            value={supabaseKey}
+            onChangeText={setSupabaseKey}
+            placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <Button
+            title="💾 Salvar e Conectar"
+            onPress={salvarConexaoSupabase}
+            style={styles.connectButton}
+          />
+
+          <View style={styles.infoBox}>
+            <Text style={styles.infoTitle}>ℹ️ Como encontrar essas informações:</Text>
+            <Text style={styles.infoText}>
+              Acesse supabase.com → seu projeto → Settings → API
+            </Text>
+          </View>
+        </Card>
+
         <Card variant="elevated">
           <View style={styles.sectionHeader}>
             <FileText size={20} color="#2563eb" />
@@ -348,5 +414,36 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     flex: 2,
+  },
+  connectButton: {
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  statusBadge: {
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  statusConnected: {
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#86efac',
+  },
+  statusLocal: {
+    backgroundColor: '#fefce8',
+    borderWidth: 1,
+    borderColor: '#fde047',
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  statusTextConnected: {
+    color: '#166534',
+  },
+  statusTextLocal: {
+    color: '#854d0e',
   },
 });

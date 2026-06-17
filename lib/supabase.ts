@@ -1,14 +1,20 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Função para criar cliente Supabase apenas quando necessário
 export const createSupabaseClient = () => {
-  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-  
+  const supabaseUrl =
+    process.env.EXPO_PUBLIC_SUPABASE_URL ||
+    (typeof localStorage !== 'undefined' && localStorage.getItem('SUPABASE_URL')) ||
+    '';
+
+  const supabaseAnonKey =
+    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+    (typeof localStorage !== 'undefined' && localStorage.getItem('SUPABASE_ANON_KEY')) ||
+    '';
+
   if (!supabaseUrl || !supabaseAnonKey) {
     return null;
   }
-  
+
   return createClient(supabaseUrl, supabaseAnonKey);
 };
 
