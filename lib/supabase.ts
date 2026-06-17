@@ -1,8 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
 import 'react-native-url-polyfill/auto';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+function getSupabaseCredentials() {
+  if (typeof localStorage !== 'undefined') {
+    const url = localStorage.getItem('SUPABASE_URL');
+    const key = localStorage.getItem('SUPABASE_ANON_KEY');
+    if (url && key) {
+      return { url, key };
+    }
+  }
+  return {
+    url: process.env.EXPO_PUBLIC_SUPABASE_URL!,
+    key: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+  };
+}
+
+const { url: supabaseUrl, key: supabaseAnonKey } = getSupabaseCredentials();
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 

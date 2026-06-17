@@ -186,9 +186,11 @@ export default function ConfiguracoesScreen() {
           />
 
           <View style={styles.infoBox}>
-            <Text style={styles.infoTitle}>ℹ️ Como encontrar essas informações:</Text>
+            <Text style={styles.infoTitle}>ℹ️ Como conectar ao seu banco:</Text>
             <Text style={styles.infoText}>
-              Acesse supabase.com → seu projeto → Settings → API
+              1. Cole a URL e a Anon Key do seu projeto{'\n'}
+              2. Clique em "Salvar e Conectar"{'\n'}
+              3. A página recarregará usando seu banco
             </Text>
           </View>
         </Card>
