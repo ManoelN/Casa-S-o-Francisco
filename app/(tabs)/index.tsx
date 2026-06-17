@@ -50,7 +50,12 @@ export default function EmissaoScreen() {
     if (!ultimoCrediario || ultimasParcelas.length === 0) return;
     setPdfLoading(true);
     try {
-      const config = await supabaseService.buscarConfiguracoes();
+      let config = null;
+      try {
+        config = await supabaseService.buscarConfiguracoes();
+      } catch {
+        // usa config padrão se não conseguir buscar
+      }
       await PDFService.gerarPDFCrediario(
         ultimoCrediario,
         ultimasParcelas,

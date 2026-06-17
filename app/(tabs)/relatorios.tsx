@@ -129,51 +129,33 @@ export default function RelatoriosScreen() {
   const exportarCSV = async () => {
     setLoading(true);
     try {
-      console.log('📊 [RELATORIO] Iniciando exportação de relatório...');
-      
-      console.log('📊 [RELATORIO] Buscando TODOS os dados para o relatório completo...');
-      const config = await supabaseService.buscarConfiguracoes();
+      let config = null;
+      try { config = await supabaseService.buscarConfiguracoes(); } catch { /* usa padrão */ }
       const stats = await supabaseService.gerarEstatisticas();
-      
-      // Buscar TODOS os dados para o relatório completo
+
       const todosClientes = await supabaseService.buscarClientes();
       const todosCrediarios = await supabaseService.buscarCrediarios();
       const parcelasEmAberto = await supabaseService.buscarParcelasEmAberto();
       const parcelasPagas = await supabaseService.buscarParcelasPagas();
       const todasParcelas = [...parcelasEmAberto, ...parcelasPagas];
       const parcelasAtrasadas = parcelasEmAberto.filter(p => calcularDiasAtraso(p.data_vencimento) > 0);
-      
-      console.log('📊 [RELATORIO] Dados coletados:', {
-        stats,
-        todosClientes: todosClientes.length,
-        todosCrediarios: todosCrediarios.length,
-        todasParcelas: todasParcelas.length,
-        parcelasEmAberto: parcelasEmAberto.length,
-        parcelasPagas: parcelasPagas.length,
-        parcelasAtrasadas: parcelasAtrasadas.length,
-        config
-      });
-      
-      console.log('📊 [RELATORIO] Importando módulo PDF...');
+
       const pdfModule = await import('@/services/pdfService');
-      console.log('📊 [RELATORIO] Módulo importado, gerando relatório...');
-      
+
       await pdfModule.PDFService.gerarRelatorioGeral(
-        stats, 
-        parcelasAtrasadas, 
+        stats,
+        parcelasAtrasadas,
         todosCrediarios,
         todosClientes,
         todasParcelas,
         config || undefined
       );
-      
-      console.log('📊 [RELATORIO] Relatório gerado com sucesso!');
-      Alert.alert('Sucesso', `Relatório completo exportado em PDF com sucesso!\n\n📊 Incluído:\n• ${todosClientes.length} clientes\n• ${todosCrediarios.length} crediários\n• ${todasParcelas.length} parcelas\n• Resumo financeiro completo`);
-      
-    } catch (error) {
-      console.error('📊 [RELATORIO] Erro ao exportar relatório:', error);
-      console.error('📊 [RELATORIO] Stack do erro:', error.stack);
-      Alert.alert('Erro', `Erro ao exportar relatório.\n\nDetalhes: ${error.message}`);
+
+      Alert.alert('Sucesso', `Relatório completo exportado em PDF com sucesso!\n\n• ${todosClientes.length} clientes\n• ${todosCrediarios.length} crediários\n• ${todasParcelas.length} parcelas`);
+
+    } catch (error: any) {
+      console.error('Erro ao exportar relatório:', error);
+      Alert.alert('Erro', `Erro ao exportar relatório.\n\nDetalhes: ${error?.message ?? ''}`);
     } finally {
       setLoading(false);
     }
