@@ -612,6 +612,9 @@ const styles = StyleSheet.create({
   valorPago: {
     color: '#059669',
   },
+  valorAberto: {
+    color: '#2563eb',
+  },
   valorAtrasado: {
     color: '#dc2626',
   },

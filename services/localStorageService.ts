@@ -214,17 +214,10 @@ export class LocalStorageService {
     
     const crediarios_cliente = crediarios.filter(c => c.cliente_id === clienteId);
     const crediarioIds = crediarios_cliente.map(c => c.id!);
-    
+
     return parcelas
       .filter(p => crediarioIds.includes(p.crediario_id))
       .sort((a, b) => new Date(a.data_vencimento).getTime() - new Date(b.data_vencimento).getTime());
-  }
-
-  async buscarParcelasPorCrediario(crediarioId: number): Promise<Parcela[]> {
-    const parcelas = await this.getItem<Parcela[]>(STORAGE_KEYS.PARCELAS, []);
-    return parcelas
-      .filter(p => p.crediario_id === crediarioId)
-      .sort((a, b) => a.numero_parcela - b.numero_parcela);
   }
 
   async quitarParcela(parcelaId: number, valorPago: number, diasAtraso: number, isPagamentoParcial: boolean = false): Promise<void> {

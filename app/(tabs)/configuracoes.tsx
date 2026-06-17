@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
 import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useSupabase } from '@/context/SupabaseContext';
-import { Settings, Store, FileText, Cloud } from 'lucide-react-native';
+import { Settings, Store, FileText, Database, RefreshCw, Trash2 } from 'lucide-react-native';
+import { saveCustomCredentials, clearCustomCredentials, getActiveCredentials } from '@/lib/supabase';
 
 interface ConfiguracaoEmpresa {
   nome: string;
@@ -23,6 +24,10 @@ export default function ConfiguracoesScreen() {
     telefone: '(92) 99999-9999',
     avisoPersonalizado: 'Sistema desenvolvido para controle de vendas a prazo'
   });
+
+  const activeCreds = getActiveCredentials();
+  const [sbUrl, setSbUrl] = useState('');
+  const [sbKey, setSbKey] = useState('');
 
   useEffect(() => {
     if (isReady) {
@@ -49,7 +54,7 @@ export default function ConfiguracoesScreen() {
 
     setLoading(true);
     try {
-    await supabaseService.salvarConfiguracoes(config);
+      await supabaseService.salvarConfiguracoes(config);
       Alert.alert('Sucesso', 'Configurações salvas com sucesso!');
     } catch (error) {
       console.error('Erro ao salvar configurações:', error);
@@ -57,6 +62,53 @@ export default function ConfiguracoesScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const conectarSupabase = () => {
+    if (!sbUrl.trim() || !sbKey.trim()) {
+      Alert.alert('Campos obrigatórios', 'Preencha a URL e a Anon Key do Supabase.');
+      return;
+    }
+    if (!sbUrl.startsWith('https://')) {
+      Alert.alert('URL inválida', 'A URL deve começar com https://');
+      return;
+    }
+    Alert.alert(
+      'Confirmar conexão',
+      `Conectar ao banco:\n${sbUrl}\n\nA página será recarregada.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Conectar',
+          onPress: () => {
+            saveCustomCredentials(sbUrl, sbKey);
+            if (Platform.OS === 'web' && typeof window !== 'undefined') {
+              window.location.reload();
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const redefinirConexao = () => {
+    Alert.alert(
+      'Redefinir conexão',
+      'Voltar para o banco de dados padrão do Bolt? A página será recarregada.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Redefinir',
+          style: 'destructive',
+          onPress: () => {
+            clearCustomCredentials();
+            if (Platform.OS === 'web' && typeof window !== 'undefined') {
+              window.location.reload();
+            }
+          },
+        },
+      ]
+    );
   };
 
   const resetarConfiguracoes = () => {
@@ -129,20 +181,62 @@ export default function ConfiguracoesScreen() {
         
         <Card variant="elevated">
           <View style={styles.sectionHeader}>
-            <Cloud size={20} color="#2563eb" />
-            <Text style={styles.sectionTitle}>Banco de Dados</Text>
+            <Database size={20} color="#2563eb" />
+            <Text style={styles.sectionTitle}>Conexão com Supabase</Text>
           </View>
 
-          <View style={[styles.statusBadge, styles.statusConnected]}>
-            <Text style={[styles.statusText, styles.statusTextConnected]}>
-              🟢 Conectado ao banco de dados
+          <View style={[styles.statusBadge, activeCreds.isCustom ? styles.statusCustom : styles.statusDefault]}>
+            <Text style={[styles.statusText, activeCreds.isCustom ? styles.statusTextCustom : styles.statusTextDefault]}>
+              {activeCreds.isCustom ? '🔵 Banco customizado ativo' : '🟢 Banco padrão do Bolt ativo'}
             </Text>
           </View>
 
+          <View style={styles.currentUrl}>
+            <Text style={styles.currentUrlLabel}>URL atual:</Text>
+            <Text style={styles.currentUrlValue} numberOfLines={1} ellipsizeMode="middle">
+              {activeCreds.url}
+            </Text>
+          </View>
+
+          <Input
+            label="Nova URL do Supabase"
+            value={sbUrl}
+            onChangeText={setSbUrl}
+            placeholder="https://xxxxxxxxxxxx.supabase.co"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+          />
+
+          <Input
+            label="Nova Anon Key"
+            value={sbKey}
+            onChangeText={setSbKey}
+            placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <View style={styles.dbActions}>
+            <Button
+              title="Conectar"
+              onPress={conectarSupabase}
+              style={styles.connectBtn}
+            />
+            {activeCreds.isCustom && (
+              <Button
+                title="Redefinir"
+                onPress={redefinirConexao}
+                variant="secondary"
+                style={styles.resetDbBtn}
+              />
+            )}
+          </View>
+
           <View style={styles.infoBox}>
-            <Text style={styles.infoTitle}>ℹ️ Sobre o banco de dados:</Text>
+            <Text style={styles.infoTitle}>Como usar:</Text>
             <Text style={styles.infoText}>
-              No preview do Bolt, o app usa o banco interno gerenciado automaticamente. Ao exportar e publicar o app, configure seu proprio Supabase no arquivo .env com suas credenciais.
+              {'1. Crie um projeto em supabase.com\n2. Copie a URL e Anon Key em Settings > API\n3. Cole acima e clique Conectar\n4. A pagina recarregara usando seu banco'}
             </Text>
           </View>
         </Card>
@@ -373,19 +467,57 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    marginBottom: 16,
+    marginBottom: 12,
     alignItems: 'center',
   },
-  statusConnected: {
+  statusDefault: {
     backgroundColor: '#f0fdf4',
     borderWidth: 1,
     borderColor: '#86efac',
   },
+  statusCustom: {
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#93c5fd',
+  },
   statusText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
-  statusTextConnected: {
+  statusTextDefault: {
     color: '#166534',
+  },
+  statusTextCustom: {
+    color: '#1d4ed8',
+  },
+  currentUrl: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 6,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  currentUrlLabel: {
+    fontSize: 11,
+    color: '#64748b',
+    marginBottom: 2,
+  },
+  currentUrlValue: {
+    fontSize: 12,
+    color: '#334155',
+    fontFamily: 'monospace',
+  },
+  dbActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  connectBtn: {
+    flex: 1,
+  },
+  resetDbBtn: {
+    flex: 1,
   },
 });

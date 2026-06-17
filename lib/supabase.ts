@@ -1,16 +1,47 @@
 import { createClient } from '@supabase/supabase-js';
 import 'react-native-url-polyfill/auto';
 
-// Remove any stale localStorage overrides from previous sessions
-if (typeof localStorage !== 'undefined') {
-  localStorage.removeItem('SUPABASE_URL');
-  localStorage.removeItem('SUPABASE_ANON_KEY');
+const SB_URL_KEY = 'sb_custom_url';
+const SB_KEY_KEY = 'sb_custom_key';
+
+function readCustomCredentials(): { url: string; key: string } | null {
+  if (typeof localStorage === 'undefined') return null;
+  const url = localStorage.getItem(SB_URL_KEY);
+  const key = localStorage.getItem(SB_KEY_KEY);
+  if (url && key) return { url, key };
+  return null;
 }
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+export function saveCustomCredentials(url: string, key: string): void {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(SB_URL_KEY, url.trim());
+    localStorage.setItem(SB_KEY_KEY, key.trim());
+  }
+}
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export function clearCustomCredentials(): void {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(SB_URL_KEY);
+    localStorage.removeItem(SB_KEY_KEY);
+  }
+}
+
+export function getActiveCredentials(): { url: string; key: string; isCustom: boolean } {
+  const custom = readCustomCredentials();
+  if (custom) return { ...custom, isCustom: true };
+  return {
+    url: process.env.EXPO_PUBLIC_SUPABASE_URL!,
+    key: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+    isCustom: false,
+  };
+}
+
+const creds = readCustomCredentials() ?? {
+  url: process.env.EXPO_PUBLIC_SUPABASE_URL!,
+  key: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+};
+
+export const supabase = createClient(creds.url, creds.key);
 
 export type Database = {
   public: {
