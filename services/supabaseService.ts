@@ -1,4 +1,4 @@
-import { supabase, createSupabaseClient } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/supabase';
 
 export interface Cliente {
@@ -47,12 +47,7 @@ export interface ConfiguracaoEmpresa {
 export class SupabaseService {
   private client = supabase;
 
-  constructor() {
-    // Verificar se o Supabase está configurado no momento da criação
-    if (!supabaseUrl || !supabaseAnonKey || supabaseUrl === 'your_supabase_project_url' || supabaseAnonKey === 'your_supabase_anon_key') {
-      throw new Error('Supabase não está configurado');
-    }
-  }
+  constructor() {}
 
   // Métodos para clientes
   async criarCliente(cliente: Cliente): Promise<number> {
