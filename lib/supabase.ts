@@ -1,21 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 import 'react-native-url-polyfill/auto';
 
-function getSupabaseCredentials() {
-  if (typeof localStorage !== 'undefined') {
-    const url = localStorage.getItem('SUPABASE_URL');
-    const key = localStorage.getItem('SUPABASE_ANON_KEY');
-    if (url && key) {
-      return { url, key };
-    }
-  }
-  return {
-    url: process.env.EXPO_PUBLIC_SUPABASE_URL!,
-    key: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
-  };
+// Remove any stale localStorage overrides from previous sessions
+if (typeof localStorage !== 'undefined') {
+  localStorage.removeItem('SUPABASE_URL');
+  localStorage.removeItem('SUPABASE_ANON_KEY');
 }
 
-const { url: supabaseUrl, key: supabaseAnonKey } = getSupabaseCredentials();
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 

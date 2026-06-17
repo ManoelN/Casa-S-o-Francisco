@@ -14,7 +14,7 @@ import { Calculator, FileText, User } from 'lucide-react-native';
 import { PDFService } from '@/services/pdfService';
 
 export default function EmissaoScreen() {
-  const { supabaseService, isReady, isUsingSupabase } = useSupabase();
+  const { supabaseService, isReady } = useSupabase();
   const [loading, setLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [ultimoCrediario, setUltimoCrediario] = useState<any>(null);
@@ -194,7 +194,7 @@ export default function EmissaoScreen() {
           </View>
           <Text style={styles.title}>Emissão de Crediário</Text>
           <Text style={styles.subtitle}>
-            {isUsingSupabase ? '🌐 Conectado ao Supabase' : '💾 Modo Local'} - Preencha os dados para criar um novo crediário
+            Preencha os dados para criar um novo crediário
           </Text>
         </View>
         
