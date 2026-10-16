@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "bolt-expo-nativewind",
+    "name": "Crediário - Casa São Francisco",
     "slug": "bolt-expo-nativewind",
     "version": "1.0.0",
     "orientation": "default",
@@ -24,7 +24,12 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "Crediário - Casa São Francisco",
+      "shortName": "Crediário",
+      "themeColor": "#1e40af",
+      "backgroundColor": "#ffffff",
+      "display": "standalone"
     },
     "plugins": ["expo-router", "expo-font", "expo-web-browser"],
     "experiments": {
